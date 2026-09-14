@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Copyright (C) 2018-2020 Ruilin Peng (Nick) <pymumu@gmail.com>.
+# Copyright (C) 2018-2025 Ruilin Peng (Nick) <pymumu@gmail.com>.
 #
 # smartdns is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,7 +17,9 @@
 CURR_DIR=$(cd $(dirname $0);pwd)
 VER="`date +"1.%Y.%m.%d-%H%M"`"
 SMARTDNS_DIR=$CURR_DIR/../../
+SMARTDNS_CP=$SMARTDNS_DIR/package/copy-smartdns.sh
 SMARTDNS_BIN=$SMARTDNS_DIR/src/smartdns
+IS_BUILD_SMARTDNS_UI=0
 
 showhelp()
 {
@@ -26,6 +28,7 @@ showhelp()
 	echo " -o               output directory."
 	echo " --arch           archtecture."
 	echo " --ver            version."
+	echo " --with-ui        build with smartdns-ui plugin."
 	echo " -h               show this message."
 }
 
@@ -43,19 +46,40 @@ build()
 	mkdir $ROOT/etc/default/ -p
 	mkdir $ROOT/lib/systemd/system/ -p
 
-	sed -i "s/Version:.*/Version: $VER/" $ROOT/DEBIAN/control
+
+	pkgver=$(echo ${VER}| sed 's/^1\.//g')
+	sed -i "s/Version:.*/Version: ${pkgver}/" $ROOT/DEBIAN/control
 	sed -i "s/Architecture:.*/Architecture: $ARCH/" $ROOT/DEBIAN/control
 	chmod 0755 $ROOT/DEBIAN/prerm
 
 	cp $SMARTDNS_DIR/etc/smartdns/smartdns.conf  $ROOT/etc/smartdns/
 	cp $SMARTDNS_DIR/etc/default/smartdns  $ROOT/etc/default/
 	cp $SMARTDNS_DIR/systemd/smartdns.service $ROOT/lib/systemd/system/ 
-	cp $SMARTDNS_DIR/src/smartdns $ROOT/usr/sbin
+
+	if [ $IS_BUILD_SMARTDNS_UI -eq 1 ]; then
+		mkdir $ROOT/usr/local/lib/smartdns -p
+		mkdir $ROOT/usr/share/smartdns/wwwroot -p
+		cp $SMARTDNS_DIR/plugin/smartdns-ui/target/smartdns_ui.so $ROOT/usr/local/lib/smartdns/smartdns_ui.so -a
+		if [ $? -ne 0 ]; then
+			echo "Failed to copy smartdns-ui plugin."
+			return 1
+		fi
+
+		cp $WORKDIR/smartdns-webui/out/* $ROOT/usr/share/smartdns/wwwroot/ -a
+		if [ $? -ne 0 ]; then
+			echo "Failed to copy smartdns-ui plugin."
+			return 1
+		fi
+	else
+		echo "smartdns-ui plugin not found, skipping copy."
+	fi
+
+	$SMARTDNS_CP $ROOT
 	if [ $? -ne 0 ]; then
 		echo "copy smartdns file failed."
 		return 1
 	fi
-	chmod +x $ROOT/usr/sbin/smartdns
+	chmod +x $ROOT/usr/sbin/smartdns 2>/dev/null
 
 	dpkg -b $ROOT $OUTPUTDIR/smartdns.$VER.$FILEARCH.deb
 
@@ -64,7 +88,7 @@ build()
 
 main()
 {
-	OPTS=`getopt -o o:h --long arch:,ver:,filearch: \
+	OPTS=`getopt -o o:h --long arch:,ver:,with-ui,filearch: \
 		-n  "" -- "$@"`
 
 	if [ $? != 0 ] ; then echo "Terminating..." >&2 ; exit 1 ; fi
@@ -80,6 +104,9 @@ main()
 		--filearch)
 			FILEARCH="$2"
 			shift 2;;
+		--with-ui)
+			IS_BUILD_SMARTDNS_UI=1
+			shift ;;
 		--ver)
 			VER="$2"
 			shift 2;;

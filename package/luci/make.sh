@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Copyright (C) 2018-2020 Ruilin Peng (Nick) <pymumu@gmail.com>.
+# Copyright (C) 2018-2025 Ruilin Peng (Nick) <pymumu@gmail.com>.
 #
 # smartdns is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -50,16 +50,19 @@ build()
 
 	mkdir -p $ROOT
 	cp $CURR_DIR/* $ROOT/ -af
+	cp $CURR_DIR/../tool $ROOT/ -af
 	cd $ROOT/
 	build_tool
-	mkdir $ROOT/root/usr/lib/lua/ -p
-	cp $ROOT/files/luci $ROOT/root/usr/lib/lua/ -af
 	
+	mkdir $ROOT/root/usr/lib/lua/luci -p
+	mkdir $ROOT/root/usr/share/rpcd/acl.d/ -p
+	cp $ROOT/files/luci/i18n $ROOT/root/usr/lib/lua/luci/ -avf
+
 	#Generate Language
 	$PO2LMO $ROOT/files/luci/i18n/smartdns.zh-cn.po $ROOT/root/usr/lib/lua/luci/i18n/smartdns.zh-cn.lmo
 	rm $ROOT/root/usr/lib/lua/luci/i18n/smartdns.zh-cn.po
 
-	cp $ROOT/files/etc $ROOT/root/ -af
+	cp $ROOT/files/root/* $ROOT/root/ -avf
 	INST_SIZE="`du -sb $ROOT/root/ | awk '{print $1}'`"
 	
 	sed -i "s/^Architecture.*/Architecture: all/g" $ROOT/control/control
@@ -75,7 +78,32 @@ build()
 	cd $ROOT
 
 	tar zcf $ROOT/data.tar.gz -C root .
-	tar zcf $OUTPUTDIR/luci-app-smartdns.$VER.$FILEARCH.ipk control.tar.gz data.tar.gz debian-binary
+	tar zcf $OUTPUTDIR/luci-app-smartdns.$VER.$FILEARCH.ipk ./control.tar.gz ./data.tar.gz ./debian-binary
+
+	which apk >/dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		APK_VER="`echo $VER | sed 's/[-]/-r/'`"
+		ARCH="`echo $ARCH | sed 's/all/noarch/g'`"
+		apk mkpkg \
+			--info "name:luci-app-smartdns" \
+			--info "version:$APK_VER" \
+			--info "description:smartdns luci" \
+			--info "arch:$ARCH" \
+			--info "license:GPL" \
+			--info "origin: https://github.com/pymumu/smartdns.git" \
+			--info "depends:libc smartdns" \
+			--script "post-install:$ROOT/control/postinst" \
+			--script "pre-deinstall:$ROOT/control/prerm" \
+			--files "$ROOT/root/" \
+			--output "$OUTPUTDIR/luci-app-smartdns.$VER.$FILEARCH.apk"
+		if [ $? -ne 0 ]; then
+			echo "build apk package failed."
+			rm -fr $ROOT/
+			return 1
+		fi
+	else
+		echo "== warning: apk tool not found, skip build apk package. =="
+	fi
 
 	rm -fr $ROOT/
 }

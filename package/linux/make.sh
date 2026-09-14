@@ -3,7 +3,9 @@
 CURR_DIR=$(cd $(dirname $0);pwd)
 VER="`date +"1.%Y.%m.%d-%H%M"`"
 SMARTDNS_DIR=$CURR_DIR/../../
+SMARTDNS_CP=$SMARTDNS_DIR/package/copy-smartdns.sh
 SMARTDNS_BIN=$SMARTDNS_DIR/src/smartdns
+IS_BUILD_SMARTDNS_UI=0
 
 showhelp()
 {
@@ -12,6 +14,7 @@ showhelp()
 	echo " -o               output directory."
 	echo " --arch           archtecture."
 	echo " --ver            version."
+	echo " --with-ui        build with smartdns-ui plugin."
 	echo " -h               show this message."
 }
 
@@ -23,12 +26,37 @@ build()
 	cd $PKG_ROOT/
 
 	# Generic x86_64
-	mkdir $PKG_ROOT/smartdns/src -p
+	mkdir $PKG_ROOT/smartdns/usr/sbin -p
 	mkdir $PKG_ROOT/smartdns/package -p
+	mkdir $PKG_ROOT/smartdns/systemd -p
+	
 	cd $SMARTDNS_DIR
 	cp package/windows $PKG_ROOT/smartdns/package/ -a
-	cp etc systemd *.md LICENSE install $PKG_ROOT/smartdns/ -a
-	cp src/smartdns $PKG_ROOT/smartdns/src -a
+	cp etc *.md LICENSE package/linux/install $PKG_ROOT/smartdns/ -a
+	cp systemd/smartdns.service $PKG_ROOT/smartdns/systemd
+
+	$SMARTDNS_CP $PKG_ROOT/smartdns
+	if [ $? -ne 0 ]; then
+		echo "copy smartdns file failed."
+		rm -fr $PKG_ROOT
+		return 1
+	fi
+
+	if [ $IS_BUILD_SMARTDNS_UI -eq 1 ]; then
+		mkdir $PKG_ROOT/smartdns/usr/local/lib/smartdns -p
+		mkdir $PKG_ROOT/smartdns/usr/share/smartdns/wwwroot -p
+		cp plugin/smartdns-ui/target/smartdns_ui.so $PKG_ROOT/smartdns/usr/local/lib/smartdns/smartdns_ui.so -a
+		cp $WORKDIR/smartdns-webui/out/* $PKG_ROOT/smartdns/usr/share/smartdns/wwwroot/ -a
+		if [ $? -ne 0 ]; then
+			echo "Failed to copy smartdns-ui plugin."
+			return 1
+		fi
+	else
+		echo "smartdns-ui plugin not found, skipping copy."
+	fi
+
+	chmod +x $PKG_ROOT/smartdns/install
+
 	if [ $? -ne 0 ]; then
 		echo "copy smartdns file failed"
 		rm -fr $PKG_ROOT
@@ -47,7 +75,7 @@ build()
 
 main()
 {
-	OPTS=`getopt -o o:h --long arch:,ver:,filearch: \
+	OPTS=`getopt -o o:h --long arch:,ver:,with-ui,filearch: \
 		-n  "" -- "$@"`
 
 	if [ $? != 0 ] ; then echo "Terminating..." >&2 ; exit 1 ; fi
@@ -63,6 +91,9 @@ main()
 		--filearch)
 			FILEARCH="$2"
 			shift 2;;
+		--with-ui)
+			IS_BUILD_SMARTDNS_UI=1
+			shift ;;
 		--ver)
 			VER="$2"
 			shift 2;;
